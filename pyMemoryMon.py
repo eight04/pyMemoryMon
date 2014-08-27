@@ -1,22 +1,20 @@
 #! python3
 
-"""pyMemoryMon
-
-"""
+""" pyMemoryMon """
 
 from safeprint import safeprint
 from time import sleep
 import psutil
 
-"""Settings
+"""
+Settings:
 
 alarm_percent	show alarm when cpu/memory % increase/decrease over this value.
 check_cpu		set to true to monitor cpu.
 check_memory	set to true to monitor memory.
 pid_ignores		an array of pids. ignore the process if pid matched.
 name_ignores	an array of process name. ignore the process if name matched.
-update_rate		second(s). time gap between each loop.
-
+update_rate		second(s). time wait between each loop.
 """
 alarm_percent = 10
 check_cpu = True
@@ -24,11 +22,11 @@ check_memory = True
 pid_ignores = [0, 4]
 name_ignores = []
 update_rate = 1
+""" Setting End """
 
-"""Main code
 
-"""
 class ProcessContainer:
+	"""wrap process"""
 	def __init__(self, proc):
 		self.process = proc
 		self.cpu_percent = proc.cpu_percent()
