@@ -1,0 +1,28 @@
+{
+	"update_rate": 1,
+
+	"CREATE": true,
+	"END": true,
+	"MEMORY": 10,
+	"CPU": 50,
+	
+	"ignore_pids": [0, 4],
+	"ignore_names": [],
+	
+	"color": {
+		"END": "\u001b[1;37;41m",
+		"MEMORY": "\u001b[1;37;44m",
+		"CREATE": "\u001b[1;37;43m",
+		"CPU": "\u001b[1;37;42m"
+	},
+	
+	"processes": {
+		"firefox.exe": {
+			"MEMORY": 20
+		},
+		"dllhost.exe": {
+			"CREATE": false,
+			"END": false
+		}
+	}
+}

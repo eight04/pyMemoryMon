@@ -2,94 +2,179 @@
 
 """ pyMemoryMon """
 
-from safeprint import safeprint
+from configure import ConfigManager
 from time import sleep
 import psutil
 
-"""
-Settings:
+def get_process_name(process):
+	name = None
+	try:
+		name = process.name()
+	except psutil.AccessDenied:
+		name = "(AD)"
+	return name
 
-alarm_percent	show alarm when cpu/memory % increase/decrease over this value.
-check_cpu		set to true to monitor cpu.
-check_memory	set to true to monitor memory.
-pid_ignores		an array of pids. ignore the process if pid matched.
-name_ignores	an array of process name. ignore the process if name matched.
-update_rate		second(s). time wait between each loop.
-"""
-alarm_percent = 10
-check_cpu = True
-check_memory = True
-pid_ignores = [0, 4]
-name_ignores = []
-update_rate = 1
-""" Setting End """
+class ProcessCached:
+	def __init__(self, process):
+		self.process = process
+		self.pid = process.pid
+		self.name = get_process_name(process)
 
-
-class ProcessContainer:
-	"""wrap process"""
-	def __init__(self, proc):
-		self.process = proc
-		self.cpu_percent = proc.cpu_percent()
-		self.memory_percent = proc.memory_percent()
-		try:
-			self.name = proc.name()
-		except psutil.AccessDenied:
-			self.name = "(Access Denied)"
-
-processes = {}
-while True:
-	for proc in psutil.process_iter():
-		pid = proc.pid
-		try:
-			name = proc.name()
-		except psutil.AccessDenied:
-			name = "(Access Denied)"
+class Monitor:
+	def __init__(self, ctrl):
+		self.ctrl = ctrl
+		self.processes = {}
 		
-		if pid in pid_ignores:
-			continue
+		self.load_config()
 		
-		if name in name_ignores:
-			continue
+	def load_config(self):
+		cm = self.ctrl.configure
+		self.conf = cm.get()
 		
-		if pid not in processes:
-			safeprint("[{:>5}] {} started".format(pid, name))
-			processes[pid] = ProcessContainer(proc)
+		default = {
+			"update_rate": 1,
+			"CREATE": True,
+			"END": True,
+			"CPU": 50,
+			"MEMORY": 10
+		}
+		cm.apply(self.conf, default)
+		
+	def monitor(self):
+		log = self.ctrl.logger.log
+		procs = self.processes
+		
+		for proc in psutil.process_iter():
+			pid = proc.pid
+			name = get_process_name(proc)
 			
-		if processes[pid].process != proc:
-			safeprint("[{:>5}] {} changed".format(pid, name))
-			processes[pid] = ProcessContainer(proc)
-	
-	del_pids = []
-	for pid, proc_con in processes.items():
-		if not proc_con.process.is_running():
-			safeprint("[{:>5}] {} end".format(pid, proc_con.name))
-			del_pids.append(pid)
-			continue
-			
-		if check_cpu:
-			cpu_percent = proc_con.process.cpu_percent()
-
-			if cpu_percent - proc_con.cpu_percent > alarm_percent:
-				safeprint("[{:>5}] {} cpu usage increased to {}%".format(pid, proc_con.name, cpu_percent))
-				proc_con.cpu_percent = cpu_percent
+			if pid not in procs:
+				log("CREATE", pid, name)
+				procs[pid] = ProcessCached(proc)
 				
-			if cpu_percent - proc_con.cpu_percent < -alarm_percent:
-				safeprint("[{:>5}] {} cpu usage decreased to {}%".format(pid, proc_con.name, cpu_percent))
-				proc_con.cpu_percent = cpu_percent
+			if procs[pid].process != proc:
+				log("END", pid, procs[pid].name)
+				log("CREATE", pid, name)
+				procs[pid] = ProcessCached(proc)
 		
-		if check_memory:
-			memory_percent = proc_con.process.memory_percent()
+		del_pids = []
+		for pid, proc_con in procs.items():
+			if not proc_con.process.is_running():
+				log("END", pid, proc_con.name)
+				del_pids.append(pid)
+				continue
 				
-			if memory_percent - proc_con.memory_percent > alarm_percent:
-				safeprint("[{:>5}] {} memory usage increased to {}%".format(pid, proc_con.name, memory_percent))
-				proc_con.memory_percent = memory_percent
+			cpu = proc_con.process.cpu_percent()
+			memory = proc_con.process.memory_percent()
+
+			log("CPU", pid, proc_con.name, cpu)
+			log("MEMORY", pid, proc_con.name, memory)
+					
+		for pid in del_pids:
+			del procs[pid]
+		
+	def event_loop(self):
+		while True:
+			try:
+				self.monitor()
+				sleep(self.conf["update_rate"])
+			except psutil.Error as er:
+				print(er)
+			except KeyboardInterrupt as er:
+				print(er)
+				break
 			
-			if memory_percent - proc_con.memory_percent < -alarm_percent:
-				safeprint("[{:>5}] {} memory usage decreased to {}%".format(pid, proc_con.name, memory_percent))
-				proc_con.memory_percent = memory_percent
+			
+class Logger:	
+	def __init__(self, ctrl):
+		self.ctrl = ctrl
+		
+		self.load_config()
+		
+	def load_config(self):
+		configure = self.ctrl.configure
+		self.conf = configure.get()		
+		default = {
+			"ignore_pids": [0, 4],
+			"ignore_names": [],
+			"processes": {},
+			"color": {
+				"CREATE": "\033[1;37;43m",
+				"END": "\033[1;37;41m",
+				"CPU": "\033[1;37;42m",
+				"MEMORY": "\033[1;37;44m"
+			}
+		}
+		configure.apply(self.conf, default)
+		
+	def log(self, type, pid, name, o=None):
+		if self.filter(type, pid, name, o):
+			return
+			
+		from datetime import datetime
+		time = datetime.now()
+		tag = time.strftime("%H:%M:%S")
+		if o:
+			s = "[{}] {:6} :: {:>5} :: {} :: {:.1f}%".format(tag, type, pid, name, o)
+		else:
+			s = "[{}] {:6} :: {:>5} :: {}".format(tag, type, pid, name)
+		
+		fname = time.strftime("%Y-%m-%d.log")
+		with open(fname, "a") as f:
+			print(s, file=f)
+			
+		print("{}{:78}".format(self.conf["color"][type], s))
+
+	def get_use(self, type, pid, name):
+		use = self.conf[type]
+		
+		if name in self.conf["processes"] and type in self.conf["processes"][name]:
+			use = self.conf["processes"][name][type]
+			
+		if pid in self.conf["processes"] and type in self.conf["processes"][pid]:
+			use = self.conf["processes"][pid][type]
+		
+		return use
+
+	def filter(self, type, pid, name, value):
+		use_create = self.conf["CREATE"]
+		use_end = self.conf["END"]
+		use_cpu = self.conf["CPU"]
+		use_memory = self.conf["MEMORY"]
+		
+		if pid in self.conf["ignore_pids"]:
+			return True
+			
+		if name in self.conf["ignore_names"]:
+			return True
+		
+		use = self.get_use(type, pid, name)
+		if not use:
+			return True
 				
-	for pid in del_pids:
-		del processes[pid]
+		if type in ["CPU", "MEMORY"] and value < use:
+			return True
+			
+		return False
+
+class Main:
+	def __init__(self):
+		self.load_class()
+		self.view()
+		self.unload_class()
+		
+	def load_class(self):
+		self.configure = ConfigManager("settings.json")
+		self.logger = Logger(self)
+		self.monitor = Monitor(self)
 	
-	sleep(update_rate)
+	def unload_class(self):
+		pass
+		
+	def view(self):
+		self.monitor.event_loop()
 	
+if __name__ == "__main__":
+	import colorama
+	colorama.init()
+	Main()
