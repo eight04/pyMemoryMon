@@ -2,9 +2,10 @@
 
 """ pyMemoryMon """
 
-from configure import ConfigManager
+from common import ConfigManager, createdir
 from time import sleep
 import psutil
+import os.path
 
 def get_process_name(process):
 	name = None
@@ -86,10 +87,12 @@ class Monitor:
 			
 			
 class Logger:	
-	def __init__(self, ctrl):
+	def __init__(self, ctrl, path="logs"):
 		self.ctrl = ctrl
+		self.path = path
 		
 		self.load_config()
+		createdir(self.path)
 		
 	def load_config(self):
 		configure = self.ctrl.configure
@@ -120,7 +123,8 @@ class Logger:
 			s = "[{}] {:6} :: {:>5} :: {}".format(tag, type, pid, name)
 		
 		fname = time.strftime("%Y-%m-%d.log")
-		with open(fname, "a") as f:
+		path = os.path.join(self.path, fname)
+		with open(path, "a") as f:
 			print(s, file=f)
 			
 		print("{}{:78}".format(self.conf["color"][type], s))

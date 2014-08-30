@@ -47,3 +47,23 @@ class ConfigManager:
 				continue
 			dest[key] = value
 		return
+
+def createdir(path):
+	"""Create folder of filepath. 
+	
+	This function can handle sub-folder like 
+	"this_doesnt_exist\sure_this_doesnt_exist_either\I_want_to_create_this"
+	"""
+	import os, os.path
+	
+	path = os.path.normpath(path)
+	
+	try:
+		os.mkdir(path)
+	except FileExistsError:
+		pass
+	except FileNotFoundError as er:
+		a, b = os.path.split(path)
+		createdir(a)
+		createdir(path)
+
