@@ -18,11 +18,19 @@
 	
 	"processes": {
 		"firefox.exe": {
-			"MEMORY": 20
+			"MEMORY": 20,
+			"CPU": 75
 		},
 		"dllhost.exe": {
 			"CREATE": false,
 			"END": false
+		},
+		"x2.exe": {
+			"MEMORY": 27,
+			"CPU": 118
+		},
+		"java.exe": {
+			"MEMORY": 27
 		}
 	}
 }
