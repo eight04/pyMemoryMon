@@ -3,9 +3,11 @@
 """ pyMemoryMon """
 
 from common import ConfigManager, createdir
-from time import sleep
+# from time import sleep
 import psutil
 import os.path
+import time
+from fnmatch import fnmatch
 
 def get_process_name(process):
 	name = None
@@ -14,12 +16,71 @@ def get_process_name(process):
 	except psutil.AccessDenied:
 		name = "(AD)"
 	return name
+	
+def fnmatchSome(name, patterns):
+	for pattern in patterns:
+		if fnmatch(name, pattern):
+			return True
+	return False
 
 class ProcessCached:
 	def __init__(self, process):
 		self.process = process
 		self.pid = process.pid
 		self.name = get_process_name(process)
+
+class Process:
+	def __init__(self, process):
+		self.process = process
+		self.update()
+	
+	def update(self):
+		self.info = self.process.as_dict(attrs=[
+			"pid", "name", "cpu_percent", "memory_percent"
+		])
+		
+	def bindFilter(self, filterList):
+		if self.info["name"] is None:
+			return False
+		for name, filter in filterList.items():
+			if fnmatch(self.info["name"], name):
+				self.filter = filter
+				return True
+		return False
+		
+	def hash(self):
+		return "{}.{}".format(self.info["pid"], self.process.create_time())
+		
+	def alive(self):
+		return self.process.is_running()
+		
+	def getFiltered(self, memory=10, cpu=50):
+		if hasattr(self, "filter"):
+			if "MEMORY" in self.filter:
+				memory = self.filter["MEMORY"]
+			if "CPU" in self.filter:
+				cpu = self.filter["CPU"]
+		fs = []
+		if memory < self.info["memory_percent"]:
+			fs.append("MEMORY")
+		if cpu < self.info["cpu_percent"]:
+			fs.append("CPU")
+		return fs
+		
+	def use_create(self, default=True):
+		if not hasattr(self, "filter"):
+			return default
+		if "CREATE" in self.filter:
+			return self.filter["CREATE"]
+		return default
+
+	def use_end(self, default=True):
+		default = True
+		if not hasattr(self, "filter"):
+			return default
+		if "END" in self.filter:
+			return self.filter["END"]
+		return default
 
 class Monitor:
 	def __init__(self, ctrl):
@@ -43,48 +104,45 @@ class Monitor:
 		
 	def monitor(self):
 		log = self.ctrl.logger.log
-		procs = self.processes
 		
-		for proc in psutil.process_iter():
-			pid = proc.pid
-			name = get_process_name(proc)
+		swap = {}
+		for hash, process in self.processes.items():
+			if process.alive():
+				process.update()
+				swap[hash] = process
+			elif process.use_end(self.conf["END"]):
+				log("END", process)
+		self.processes = swap
+		
+		for hash, process in self.processes.items():
+			fs = process.getFiltered(memory=self.conf["MEMORY"], cpu=self.conf["CPU"])
+			for f in fs:
+				log(f, process)
+		
+		for process in psutil.process_iter():
+			process = Process(process)
 			
-			if pid not in procs:
-				log("CREATE", pid, name)
-				procs[pid] = ProcessCached(proc)
-				
-			if procs[pid].process != proc:
-				log("END", pid, procs[pid].name)
-				log("CREATE", pid, name)
-				procs[pid] = ProcessCached(proc)
-		
-		del_pids = []
-		for pid, proc_con in procs.items():
-			if not proc_con.process.is_running():
-				log("END", pid, proc_con.name)
-				del_pids.append(pid)
-				continue
-				
-			cpu = proc_con.process.cpu_percent()
-			memory = proc_con.process.memory_percent()
-
-			log("CPU", pid, proc_con.name, cpu)
-			log("MEMORY", pid, proc_con.name, memory)
-					
-		for pid in del_pids:
-			del procs[pid]
+			hash = process.hash()			
+			if hash not in self.processes:
+				if process.info["pid"] in self.conf["ignore_pids"]:
+					continue
+				if fnmatchSome(process.info["name"], self.conf["ignore_names"]):
+					continue
+				process.bindFilter(self.conf["processes"])
+				self.processes[hash] = process
+				if process.use_create(self.conf["CREATE"]):
+					log("CREATE", process)
 		
 	def event_loop(self):
 		while True:
 			try:
 				self.monitor()
-				sleep(self.conf["update_rate"])
+				time.sleep(self.conf["update_rate"])
 			except psutil.Error as er:
 				print(er)
 			except KeyboardInterrupt as er:
 				print(er)
 				break
-			
 			
 class Logger:	
 	def __init__(self, ctrl, path="logs"):
@@ -110,56 +168,40 @@ class Logger:
 		}
 		configure.apply(self.conf, default)
 		
-	def log(self, type, pid, name, o=None):
-		if self.filter(type, pid, name, o):
-			return
-			
-		from datetime import datetime
-		time = datetime.now()
+	def log(self, type, process):
 		tag = time.strftime("%H:%M:%S")
-		if o:
-			s = "[{}] {:6} :: {:>5} :: {} :: {:.1f}%".format(tag, type, pid, name, o)
-		else:
-			s = "[{}] {:6} :: {:>5} :: {}".format(tag, type, pid, name)
 		
+		if type in ["CREATE", "END"]:
+			s = "[{}] {:6} :: {:>5} :: {}".format(
+				tag,
+				type,
+				process.info["pid"],
+				process.info["name"]
+			)
+		elif type == "MEMORY":
+			s = "[{}] {:6} :: {:>5} :: {} :: {:.1f}%\a".format(
+				tag,
+				type,
+				process.info["pid"],
+				process.info["name"],
+				process.info["memory_percent"]
+			)
+		elif type == "CPU":
+			s = "[{}] {:6} :: {:>5} :: {} :: {:.1f}%".format(
+				tag,
+				type,
+				process.info["pid"],
+				process.info["name"],
+				process.info["cpu_percent"]
+			)
+			
+		# Create log
 		fname = time.strftime("%Y-%m-%d.log")
 		path = os.path.join(self.path, fname)
 		with open(path, "a") as f:
 			print(s, file=f)
 			
-		print("{}{:78}".format(self.conf["color"][type], s))
-
-	def get_use(self, type, pid, name):
-		use = self.conf[type]
-		
-		if name in self.conf["processes"] and type in self.conf["processes"][name]:
-			use = self.conf["processes"][name][type]
-			
-		if pid in self.conf["processes"] and type in self.conf["processes"][pid]:
-			use = self.conf["processes"][pid][type]
-		
-		return use
-
-	def filter(self, type, pid, name, value):
-		use_create = self.conf["CREATE"]
-		use_end = self.conf["END"]
-		use_cpu = self.conf["CPU"]
-		use_memory = self.conf["MEMORY"]
-		
-		if pid in self.conf["ignore_pids"]:
-			return True
-			
-		if name in self.conf["ignore_names"]:
-			return True
-		
-		use = self.get_use(type, pid, name)
-		if not use:
-			return True
-				
-		if type in ["CPU", "MEMORY"] and value < use:
-			return True
-			
-		return False
+		print("{}{:78}\033[0;37;40m".format(self.conf["color"][type], s))
 
 class Main:
 	def __init__(self):
