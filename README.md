@@ -1,76 +1,40 @@
 pyMemoryMon
 ===========
-A memory monitor using python and psutil.
+A simple process monitor/logger built with python and psutil.
 
 Screenshot
 ----------
 ![Imgur](http://i.imgur.com/VT5ltmt.png)
 
-Installation
+Dependencies
 ------------
-Install following dependencies first.
-
 * [Python 3.4](https://www.python.org/)
 * [psutil](https://pypi.python.org/pypi/psutil)
 * [colorama](https://pypi.python.org/pypi/colorama)
 
-Then download the entire folder, run
-```Shell
-python pymemorymon.py
-```
+Install
+-------
+1. Rename `settings.default.json` to `settings.json`.
+2. Add your settings.
+3. Run `python pymemorymon.py`
 
-Event Types
------------
-There are 4 types of event.
-
-* CREATE - process created.
-* END - process end.
-* MEMORY - high memory usage.
-* CPU - high cpu usage.
-
-settings.json
--------------
-*update_rate*
-Seconds to wait for each loop.
-
-*CREATE*
-True or false. Whether to log CREATE event.
-
-*END*
-True or false. Whether to log END event.
-
-*MEMORY*
-Bool or number. Logs when memory using percentage over this value.
-
-*CPU*
-Bool or number. Note that if you have multiple cpu, it could be over 100.
-
-*ignore_pids*
-Array of PIDs to ignore.
-
-*ignore_names*
-Array of process name to ignore. Like "firefox.exe".
-
-*color*
-Define the text color for each type of event in the terminal.
-
-*processes*
-A dict to define per process setting. Key could be PID or process name.
-
-settings.json Example
+Setting Example
 ---------------------
 ```JavaScript
 {
-	"update_rate": 1,
+	"update_rate": 1,	// Check process state every 1 second.
 
-	"CREATE": true,
-	"END": true,
-	"MEMORY": 10,
-	"CPU": 50,
+	// Global settings
+	"CREATE": true,	// Monitor creation of process
+	"END": true,	// Monitor end of process
+	"MEMORY": 10,	// Monitor when memory usage is over 10%
+	"CPU": 50,		// Monitor when CPU usage is over 50%. Note that this value
+					// could be over 100 if you have multi core cpu.
 
-	"ignore_pids": [0, 4],
+	"ignore_pids": [0, 4],	// Ignore "System", "System Idle Process" processes.
 	"ignore_names": [],
 
+	// Highlight color
 	"color": {
 		"END": "\u001b[1;37;41m",
 		"MEMORY": "\u001b[1;37;44m",
@@ -78,6 +42,7 @@ settings.json Example
 		"CPU": "\u001b[1;37;42m"
 	},
 
+	// Settings by process name
 	"processes": {
 		"firefox.exe": {
 			"MEMORY": 20
@@ -85,16 +50,12 @@ settings.json Example
 		"dllhost.exe": {
 			"CREATE": false,
 			"END": false
+		},
+		// Support wildcards. It use `fnmatch` to match process name
+		"flash_player_*" {	
+			"CPU": 100
 		}
 	}
 }
 
 ```
-
-Todos
------
-* Logger class. OK
-* Color console? OK
-* GUI(threading)?
-* Use something like filter. OK
-* Need a better algorithm of CPU event.
