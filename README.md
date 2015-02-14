@@ -59,3 +59,8 @@ Setting Example
 }
 
 ```
+
+Known issues
+------------
+* `psutil` might be retricted to get process info if the process was created by
+  different user.
