@@ -64,3 +64,8 @@ Known issues
 ------------
 * `psutil` might be retricted to get process info if the process was created by
   different user.
+
+Todos
+-----
+* Use cmdline if process doesn't have name.
+* Use buffer in logger to fix rapid writing issue.
