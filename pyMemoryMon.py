@@ -148,6 +148,8 @@ class Logger:
 	def __init__(self, ctrl, path="logs"):
 		self.ctrl = ctrl
 		self.path = path
+		self.buffer = ""
+		self.file = ""
 		
 		self.load_config()
 		createdir(self.path)
@@ -198,10 +200,22 @@ class Logger:
 		# Create log
 		fname = time.strftime("%Y-%m-%d.log")
 		path = os.path.join(self.path, fname)
-		with open(path, "a") as f:
-			print(s, file=f)
-			
+		
+		if self.file and (self.file != path or len(self.buffer) > 1000):
+			with open(self.file, "a") as f:
+				print(self.buffer, file=f, end="")
+			self.file = ""
+			self.buffer = ""
+
+		self.file = path
+		self.buffer += s + "\n"
+		
 		print("{}{:78}\033[0;37;40m".format(self.conf["color"][type], s))
+		
+	def cleanup(self):
+		if self.file:
+			with open(self.file, "a") as f:
+				print(self.buffer, file=f, end="")
 
 class Main:
 	def __init__(self):
@@ -215,7 +229,7 @@ class Main:
 		self.monitor = Monitor(self)
 	
 	def unload_class(self):
-		pass
+		self.logger.cleanup()
 		
 	def view(self):
 		self.monitor.event_loop()
