@@ -23,21 +23,16 @@ def fnmatchSome(name, patterns):
 			return True
 	return False
 
-class ProcessCached:
-	def __init__(self, process):
-		self.process = process
-		self.pid = process.pid
-		self.name = get_process_name(process)
-
 class Process:
 	def __init__(self, process):
 		self.process = process
 		self.update()
-	
+			
 	def update(self):
 		self.info = self.process.as_dict(attrs=[
-			"pid", "name", "cpu_percent", "memory_percent"
+			"pid", "name", "cpu_percent", "memory_percent", "cmdline", "exe"
 		])
+		self.info["name"] = self.info["name"] or self.info["cmdline"] or self.info["exe"]
 		
 	def bindFilter(self, filterList):
 		if self.info["name"] is None:
@@ -139,9 +134,9 @@ class Monitor:
 				self.monitor()
 				time.sleep(self.conf["update_rate"])
 			except psutil.Error as er:
-				print(er)
+				print("psutil.Error ->", type(er), er)
 			except KeyboardInterrupt as er:
-				print(er)
+				print("KeyboardInterrupt ->", type(er), er)
 				break
 			
 class Logger:	
@@ -181,7 +176,7 @@ class Logger:
 				process.info["name"]
 			)
 		elif type == "MEMORY":
-			s = "[{}] {:6} :: {:>5} :: {} :: {:.1f}%\a".format(
+			s = "[{}] {:6} :: {:>5} :: {} :: {:.1f}%".format(
 				tag,
 				type,
 				process.info["pid"],

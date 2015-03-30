@@ -64,8 +64,9 @@ Known issues
 ------------
 * `psutil` might be retricted to get process info if the process was created by
   different user.
+	- Seems that it's possible to get process name after psutil 3.0:
+	  https://github.com/giampaolo/psutil/issues/599
 
 Todos
 -----
-* Use cmdline if process doesn't have name.
-* Use buffer in logger to fix rapid writing issue.
+* <del>Use cmdline if process doesn't have name.</del>
